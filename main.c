@@ -42,45 +42,79 @@ long long process_text(const char *pathToFile, int bufferSize) {
         exit(EXIT_FAILURE);
     }
 
-    char secbuffer[bufferSize];
+    char read_buffer[bufferSize];
     char temp_num[64];
     long long suma = 0;
     ssize_t bytesRead;
 
-    while ((bytesRead = read(fd, secbuffer, bufferSize)) > 0) {
+    while ((bytesRead = read(fd, read_buffer, bufferSize)) > 0) {
         for (ssize_t i = 0; i < bytesRead; i++) {
-            if (buffer_free_bytes(&buffer) > 0) { //no overflow
-                buffer_push(&buffer, secbuffer[i]);
-            }
+            while (buffer_free_bytes(&buffer) == 0) { // buffer full
+                int elemSize = buffer_size_next_element(&buffer, ',', 0);
+                if (elemSize == -1) {
+                    fprintf(stderr, "Num bigger than the buffer, no aviable\n");
+                    buffer_deallocate(&buffer);
+                    close(fd);
+                    exit(EXIT_FAILURE);
+                }
+
+                if (elemSize >= (int)sizeof(temp_num)) {
+                    fprintf(stderr, "Num bigger than the temporary space number, no aviable\n");
+                    buffer_deallocate(&buffer);
+                    close(fd);
+                    exit(EXIT_FAILURE);
+                }
+
+                for (int j = 0; j < elemSize - 1; j++)
+                    temp_num[j] = buffer_pop(&buffer); //copy number without comma
+
+                buffer_pop(&buffer); //delete comma
+                temp_num[elemSize - 1] = '\0';
+                suma += atoll(temp_num);
+            } //end while buffer full
+
+            buffer_push(&buffer, read_buffer[i]);
         }
 
-        int elementSize;
-        while ((elementSize = buffer_size_next_element(&buffer, ',', 0)) != -1) {
-            for (int j = 0; j < elementSize - 1; j++) { //not include comma
-                if (buffer_used_bytes(&buffer) > 0) {
-                    temp_num[j] = buffer_pop(&buffer);
-                }
+        int elemSize; // process all complete elements in the buffer
+        while ((elemSize = buffer_size_next_element(&buffer, ',', 0)) != -1) {
+            if (elemSize >= (int)sizeof(temp_num)) {
+                fprintf(stderr, "Num bigger than the temporary space number, no aviable\n");
+                buffer_deallocate(&buffer);
+                close(fd);
+                exit(EXIT_FAILURE);
             }
-            buffer_pop(&buffer);//remove the comma
-            temp_num[elementSize - 1] = '\0'; //close string
-            suma += atoi(temp_num);
-            //empty(temp_num);
+
+            for (int j = 0; j < elemSize - 1; j++)
+                temp_num[j] = buffer_pop(&buffer);
+
+            buffer_pop(&buffer); //delete comma
+            temp_num[elemSize - 1] = '\0';
+            suma += atoll(temp_num);
         }
     }
 
-    int elementSize = buffer_size_next_element(&buffer, ',', 1); //EOF reached
-    if (elementSize > 0) {
-        for (int j = 0; j < elementSize; j++) {
-            temp_num[j] = buffer_pop(&buffer);
+    int elemSize = buffer_size_next_element(&buffer, ',', 1); //EOF: process last element
+    if (elemSize > 0) {
+        if (elemSize >= (int)sizeof(temp_num)) {
+            fprintf(stderr, "Num bigger than the temporary space number, no aviable\n");
+            buffer_deallocate(&buffer);
+            close(fd);
+            exit(EXIT_FAILURE);
         }
-        temp_num[elementSize] = '\0';
-        suma += atoi(temp_num);
+
+        for (int j = 0; j < elemSize; j++)
+            temp_num[j] = buffer_pop(&buffer);
+
+        temp_num[elemSize] = '\0';
+        suma += atoll(temp_num);
     }
 
     buffer_deallocate(&buffer);
     close(fd);
     return suma;
 }
+
 
 
 
@@ -93,7 +127,7 @@ int main(int argc, char *argv[]) {
     char *path = argv[2];
     int bufferSize = atoi(argv[3]);
 
-    long long suma;
+    int suma;
 
     if (strcmp(mode, "binary") == 0) {
         suma = process_binary(path, bufferSize);
@@ -106,6 +140,6 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    printf("%lld\n", suma);
+    printf("%d\n", suma);
     return 0;
 }
