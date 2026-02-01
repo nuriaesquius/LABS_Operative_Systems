@@ -1,8 +1,9 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/bin/bash
+gcc main.c circularBuffer.c -o text
 
-mkdir -p bin
+./text text Data/int_text_small.txt 1024
+./text text Data/int_text_big.txt 1024
 
-gcc -std=c11 -O2 -Wall -Wextra -pedantic \
-  src/main.c src/circularBuffer.c \
-  -o bin/myprogram
+gcc main.c circularBuffer.c -o binary
+./binary binary Data/test_big.dat 1024
+./binary binary Data/test_small.dat 1024
