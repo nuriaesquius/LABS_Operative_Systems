@@ -127,7 +127,7 @@ int main(int argc, char *argv[]) {
     char *path = argv[2];
     int bufferSize = atoi(argv[3]);
 
-    int suma;
+    long long suma;
 
     if (strcmp(mode, "binary") == 0) {
         suma = process_binary(path, bufferSize);
@@ -140,6 +140,7 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    printf("%d\n", suma);
+    printf("%lld\n", suma);
     return 0;
 }
+
