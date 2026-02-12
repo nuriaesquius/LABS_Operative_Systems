@@ -3,21 +3,14 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/wait.h>
+#include "splitCommand.h"
 
 #define MAX_LINE 1024
 
-void parse_command(char *line, char **args) {
-    args[0] = strtok(line, " "); //split the line until the first space
-    int i = 0;
-    while (args[i] != NULL) {
-        i++;
-        args[i] = strtok(NULL, " ");//split the line until the next space
-    }
-}
 
 void execute_single(char *line, int wait) {
     char *args[64];
-    parse_command(line, args);
+    args = split_command(line);;
 
     pid_t pid;
     pid = fork();
@@ -39,8 +32,8 @@ void execute_piped(char *line1, char *line2) {
     char *args1[64];
     char *args2[64];
 
-    parse_command(line1, args1);
-    parse_command(line2, args2);
+    args1 = split_command(line1); 
+    args2 = split_command(line2);
 
     int fd[2];
     pipe(fd);
@@ -88,33 +81,27 @@ int main() {
         if (fgets(mode, MAX_LINE, stdin) == NULL)
             break;
 
-        size_t len = strlen(mode);
-        if (len > 0 && mode[len-1] == '\n') {
-            mode[len-1] = '\0';
+        mode[strcspn(mode, "\n")] = 0; //remove \n
+
+        if (strcmp(mode, "EXIT") == 0) { //exit
+            break; // 
         }
 
-
-        if (strcmp(mode, "EXIT") == 0) {
-            break;
-        }
-
-        if (strcmp(mode, "SINGLE") == 0) {
+        if (strcmp(mode, "SINGLE") == 0) { 
             fgets(line1, MAX_LINE, stdin);
-            line1[strcspn(line1, "\n")] = 0;
+            line1[strcspn(line1, "\n")] = 0; //remove \n
             execute_single(line1, 1);
         }
         else if (strcmp(mode, "CONCURRENT") == 0) {
             fgets(line1, MAX_LINE, stdin);
-            line1[strcspn(line1, "\n")] = 0;
+            line1[strcspn(line1, "\n")] = 0; //remove \n
             execute_single(line1, 0);
         }
         else if (strcmp(mode, "PIPED") == 0) {
             fgets(line1, MAX_LINE, stdin);
             fgets(line2, MAX_LINE, stdin);
-
-            line1[strcspn(line1, "\n")] = 0;
-            line2[strcspn(line2, "\n")] = 0;
-
+            line1[strcspn(line1, "\n")] = 0; //remove \n
+            line2[strcspn(line2, "\n")] = 0; //remove \n
             execute_piped(line1, line2);
         }
     }
