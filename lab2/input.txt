@@ -1,0 +1,8 @@
+SINGLE
+ls
+PIPED
+ps aux
+grep root
+CONCURRENT
+sleep 5
+EXIT

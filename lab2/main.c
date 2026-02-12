@@ -4,13 +4,12 @@
 #include <unistd.h>
 #include <sys/wait.h>
 #include "splitCommand.h"
+#include "circularBuffer.h"
 
 #define MAX_LINE 1024
 
-
 void execute_single(char *line, int wait) {
-    char *args[64];
-    args = split_command(line);;
+    char **args = split_command(line);;
 
     pid_t pid;
     pid = fork();
@@ -23,29 +22,35 @@ void execute_single(char *line, int wait) {
         if (wait==1){
             waitpid(pid, NULL, 0);
         }
+        free(args);
     } else { //fork failed
         perror("fork failed");
     }
 }
 
 void execute_piped(char *line1, char *line2) {
-    char *args1[64];
-    char *args2[64];
+    char **args1;
+    char **args2;
 
     args1 = split_command(line1); 
     args2 = split_command(line2);
 
     int fd[2];
-    pipe(fd);
     
-    if (fd == -1) {
+    if (pipe(fd) == -1) {
         perror("pipe failed");
-        return;
+    return;
     }
+
 
     pid_t pid1 = fork();
 
-    if (pid1 == 0) { //child 1
+    if (pid1 < 0) { 
+        perror("fork failed"); 
+        return; 
+    }
+
+    else if (pid1 == 0) { //child 1
         dup2(fd[1], STDOUT_FILENO); //stdout to write pipe
         close(fd[0]);
         close(fd[1]);
@@ -56,7 +61,12 @@ void execute_piped(char *line1, char *line2) {
 
     pid_t pid2 = fork();
 
-    if (pid2 == 0) {
+    if (pid2 < 0) { 
+        perror("fork failed"); 
+        return; 
+    } 
+
+    else if (pid2 == 0) {
         dup2(fd[0], STDIN_FILENO); //stdin to read pipe
         close(fd[1]);
         close(fd[0]);
@@ -70,41 +80,71 @@ void execute_piped(char *line1, char *line2) {
 
     waitpid(pid1, NULL, 0);
     waitpid(pid2, NULL, 0);
+
+    free(args1); 
+    free(args2);
 }
 
 int main() {
-    char mode[MAX_LINE];
-    char line1[MAX_LINE];
-    char line2[MAX_LINE];
+    CircularBuffer cb;
+    buffer_init(&cb, MAX_LINE);
 
-    while (1) {
-        if (fgets(mode, MAX_LINE, stdin) == NULL)
-            break;
+    int c;
+    int reachedEOF = 0;
 
-        mode[strcspn(mode, "\n")] = 0; //remove \n
-
-        if (strcmp(mode, "EXIT") == 0) { //exit
-            break; // 
+    while (reachedEOF==0) {
+        c = fgetc(stdin);
+        if (c == EOF) {
+            reachedEOF = 1;
+        } else {
+            buffer_push(&cb, c);
         }
 
-        if (strcmp(mode, "SINGLE") == 0) { 
-            fgets(line1, MAX_LINE, stdin);
-            line1[strcspn(line1, "\n")] = 0; //remove \n
-            execute_single(line1, 1);
-        }
-        else if (strcmp(mode, "CONCURRENT") == 0) {
-            fgets(line1, MAX_LINE, stdin);
-            line1[strcspn(line1, "\n")] = 0; //remove \n
-            execute_single(line1, 0);
-        }
-        else if (strcmp(mode, "PIPED") == 0) {
-            fgets(line1, MAX_LINE, stdin);
-            fgets(line2, MAX_LINE, stdin);
-            line1[strcspn(line1, "\n")] = 0; //remove \n
-            line2[strcspn(line2, "\n")] = 0; //remove \n
-            execute_piped(line1, line2);
+        int line_size;
+        while ((line_size = buffer_size_next_element(&cb, '\n', reachedEOF)) > 0) {
+            char line[MAX_LINE];
+            for (int i = 0; i < line_size; i++) {
+                line[i] = buffer_pop(&cb);
+            }
+            line[line_size-1] = '\0'; // quitar \n
+
+            if (strcmp(line, "SINGLE") == 0) {
+                int size_next = buffer_size_next_element(&cb, '\n', reachedEOF);
+                char command[MAX_LINE];
+                for (int i = 0; i < size_next; i++){
+                    command[i] = buffer_pop(&cb);
+                } 
+                command[size_next-1] = '\0';
+                execute_single(command, 1);
+            }
+            else if (strcmp(line, "CONCURRENT") == 0) {
+                int size_next = buffer_size_next_element(&cb, '\n', reachedEOF);
+                char command[MAX_LINE];
+                for (int i = 0; i < size_next; i++){
+                    command[i] = buffer_pop(&cb);
+                } 
+                command[size_next-1] = '\0';
+                execute_single(command, 0);
+            }
+            else if (strcmp(line, "PIPED") == 0) {
+                int size1 = buffer_size_next_element(&cb, '\n', reachedEOF);
+                int size2 = buffer_size_next_element(&cb, '\n', reachedEOF);
+                char command1[MAX_LINE], command2[MAX_LINE];
+                for (int i = 0; i < size1; i++){
+                    command1[i] = buffer_pop(&cb); 
+                }
+                for (int i = 0; i < size2; i++){
+                    command2[i] = buffer_pop(&cb); 
+                } 
+                command1[size1-1] = '\0';
+                command2[size2-1] = '\0';
+                execute_piped(command1, command2);
+            }
+            else if (strcmp(line, "EXIT") == 0) {
+                reachedEOF = 1;
+            }
         }
     }
 
-    return 0;
+    buffer_deallocate(&cb);
 }
