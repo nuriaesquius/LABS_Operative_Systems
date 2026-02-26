@@ -43,7 +43,7 @@ void* thread_func(void* arg) {
     // read in blocks of max 1024 bytes
     while (remaining > 0) {
 
-        int to_read = remaining > BUFF_SIZE ? BUFF_SIZE : remaining;
+        int to_read = remaining > BUFF_SIZE ? BUFF_SIZE : remaining; //min between buff_size and remaining
 
         int n = read(fd, buffer, to_read);
         if (n <= 0) {
@@ -72,7 +72,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    int nThreads = atoi(argv[3]);
+    int nThreads = atoi(argv[3]); // number of threads to use
     if (nThreads <= 0) {
         printf("invalid number of threads\n");
         return 1;
