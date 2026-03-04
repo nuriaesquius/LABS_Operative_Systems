@@ -52,43 +52,38 @@ void * Producer (void* arg) {
         sem_post(&sem_full); 
     }
     close(fd);
-    return NULL; //MIRAT FINS AQUÍ!!!
+    return NULL; 
 }
 
-// --- Función Consumidor ---
 void * Consumer (void* arg) {
     while (1) {
-        sem_wait(&sem_full); // Espera si está vacío [cite: 22]
-        
+        sem_wait(&sem_full);
         pthread_mutex_lock(&lock_buffer);
-        // Si no hay datos y la producción terminó, salir [cite: 26]
-        if (producers_finished && nBuffer == 0) {
+        if (producers_finished && elements_in_buffer == 0) { //no more data to process
             pthread_mutex_unlock(&lock_buffer);
             break; 
         }
-
         unsigned char* block = sharedBuffer[out];
-        out = (out + 1) % elementsInBuffer;
-        nBuffer--;
+        out = (out + 1) % totalbuffer; //next buffer position
+        elements_in_buffer--;
         pthread_mutex_unlock(&lock_buffer);
         
-        sem_post(&sem_empty); // Libera un espacio [cite: 7]
+        sem_post(&sem_empty); 
 
-        // Procesar Histograma [cite: 6]
         pthread_mutex_lock(&lock_histo);
         for (int i = 0; i < blockSize; i++) {
-            global_histogram[block[i]]++;
+            global_histogram[block[i]]++; //update global histogram
         }
         pthread_mutex_unlock(&lock_histo);
 
-        free(block); // Liberar bloque procesado [cite: 30]
+        free(block);
     }
     return NULL;
 }
 
 int main(int argc, char *argv[]) {
-    if (argc != 6) { [cite: 32]
-        printf("Uso: %s <input> <output> <N_prod> <N_cons> <sizeBuffer>\n", argv[0]);
+    if (argc != 6) {
+        printf("Correct usage: %s <input> <output> <N_prod> <N_cons> <sizeBuffer>\n", argv[0]);
         return 1;
     }
 
@@ -98,11 +93,10 @@ int main(int argc, char *argv[]) {
 
     int n_prods = atoi(argv[3]);
     int n_cons = atoi(argv[4]);
-    elementsInBuffer = atoi(argv[5]);
+    totalbuffer = atoi(argv[5]);
 
-    // Inicialización [cite: 30]
-    sharedBuffer = malloc(sizeof(unsigned char*) * elementsInBuffer);
-    sem_init(&sem_empty, 0, elementsInBuffer);
+    sharedBuffer = malloc(sizeof(unsigned char*) * totalbuffer);
+    sem_init(&sem_empty, 0, totalbuffer);
     sem_init(&sem_full, 0, 0);
     readPos = 0; // Deberías usar parsePGM para saltar el header aquí
 
@@ -110,18 +104,14 @@ int main(int argc, char *argv[]) {
 
     for (int i = 0; i < n_prods; i++) pthread_create(&prods[i], NULL, Producer, argv[1]);
     for (int i = 0; i < n_cons; i++) pthread_create(&cons[i], NULL, Consumer, NULL);
-
     for (int i = 0; i < n_prods; i++) pthread_join(prods[i], NULL);
 
-    // Finalización: Despertar consumidores [cite: 28]
     pthread_mutex_lock(&lock_buffer);
     producers_finished = 1;
     pthread_mutex_unlock(&lock_buffer);
     for (int i = 0; i < n_cons; i++) sem_post(&sem_full); 
-
     for (int i = 0; i < n_cons; i++) pthread_join(cons[i], NULL);
 
-    // Guardar histograma y liberar memoria...
     free(sharedBuffer);
     return 0;
 }
